@@ -5,8 +5,9 @@ let studentsData = [];
 let attendanceLogs = [];
 let usersData = [];
 let currentUser = null; // null = Guest
+let selectedScanClass = null; // Storing currently chosen class for scanning
 
-// Masukkan URL Google Apps Script Web App Anda di sini
+// URL Google Apps Script
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxfaAg3kJEfEF4ucqnkzkA_iRnGzFEQWXRK3N2do_J-5jwSYz_GKFvy5yCjXD4GXEUz/exec';
 
 // State Pemindai Kamera Direct API
@@ -14,8 +15,11 @@ let html5QrCode = null;
 let isCameraActive = false;
 let isProcessingScan = false;
 
+// List Kelas Standar
+const DEFAULT_CLASSES = ['Kelas I', 'Kelas II', 'Kelas III', 'Kelas IV', 'Kelas V', 'Kelas VI'];
+
 // ==========================================
-// HELPER FUNCTIONS (DATE, TIME WITA & DEDUPLICATION)
+// HELPER FUNCTIONS
 // ==========================================
 function cleanDateStr(dStr, timestamp) {
   if (timestamp && typeof timestamp === 'string' && timestamp.includes(',')) {
@@ -40,7 +44,6 @@ function isClassMatch(classA, classB) {
   return classA.trim().toLowerCase() === classB.trim().toLowerCase();
 }
 
-// Pembersih Siswa Ganda (Mencegah NIS / ID Sama)
 function getUniqueStudents(list) {
   const map = new Map();
   list.forEach(s => {
@@ -51,7 +54,6 @@ function getUniqueStudents(list) {
   return Array.from(map.values());
 }
 
-// Pembersih Log Absensi Ganda
 function getUniqueLogs(list) {
   const map = new Map();
   list.forEach(l => {
@@ -59,13 +61,14 @@ function getUniqueLogs(list) {
       const resolvedDate = cleanDateStr(l.dateStr, l.timestamp);
       const studentKey = String(l.studentId).trim().toLowerCase();
       const key = `${studentKey}_${resolvedDate}`;
-      map.set(key, { ...l, dateStr: resolvedDate });
+      if (!map.has(key)) {
+        map.set(key, { ...l, dateStr: resolvedDate });
+      }
     }
   });
   return Array.from(map.values());
 }
 
-// FUNGI SINKRONISASI PENGIRIMAN KE GOOGLE SHEETS
 function sendToGoogleSheets(payload) {
   if (!GOOGLE_SCRIPT_URL) return;
   fetch(GOOGLE_SCRIPT_URL, {
@@ -127,6 +130,53 @@ function saveDataToLocalStorage() {
 
 function saveUsersToLocalStorage() {
   localStorage.setItem('sd1tiga_users', JSON.stringify(usersData));
+}
+
+// ==========================================
+// SYSTEM PILIHAN KELAS UNTUK PEMINDAI
+// ==========================================
+function renderClassSelectionGrid() {
+  const container = document.getElementById('classSelectionGrid');
+  if (!container) return;
+
+  // Mengumpulkan kelas yang ada dari siswa + kelas standar
+  const allClasses = [...new Set([...DEFAULT_CLASSES, ...studentsData.map(s => s.kelas)])].sort();
+
+  container.innerHTML = allClasses.map(cls => {
+    const studentCount = studentsData.filter(s => isClassMatch(s.kelas, cls)).length;
+    return `
+      <button onclick="selectClassForScan('${cls}')" class="glass-card bg-white hover:bg-sky-50 border-2 border-sky-200 hover:border-sky-500 rounded-2xl p-4 sm:p-5 text-center transition shadow-sm hover:shadow-md flex flex-col items-center group">
+        <div class="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-lg mb-2 group-hover:scale-110 transition-transform">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <h3 class="text-sm sm:text-base font-extrabold text-slate-800 font-heading group-hover:text-sky-900">${cls}</h3>
+        <span class="text-[11px] font-bold text-sky-600 mt-1">${studentCount} Siswa</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function selectClassForScan(className) {
+  selectedScanClass = className;
+  document.getElementById('activeClassNameBadge').textContent = className;
+  
+  document.getElementById('scanClassSelectionStep').classList.add('hidden');
+  document.getElementById('scanActiveStep').classList.remove('hidden');
+
+  const barcodeInput = document.getElementById('barcodeInput');
+  if (barcodeInput) barcodeInput.focus();
+
+  showToast(`Mode Pemindai untuk ${className} Aktif`, '📌');
+}
+
+function backToClassSelection() {
+  if (isCameraActive) {
+    toggleCameraScanner(); // Matikan kamera jika aktif
+  }
+  selectedScanClass = null;
+  document.getElementById('scanActiveStep').classList.add('hidden');
+  document.getElementById('scanClassSelectionStep').classList.remove('hidden');
+  renderClassSelectionGrid();
 }
 
 // ==========================================
@@ -226,6 +276,7 @@ function switchTab(tabName) {
   if (tabName === 'scan') {
     document.getElementById('tabScan').classList.remove('hidden');
     document.getElementById('navScanBtn').classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+    renderClassSelectionGrid();
   } else if (tabName === 'dashboard') {
     document.getElementById('tabDashboard').classList.remove('hidden');
     document.getElementById('navDashboardBtn').classList.add('bg-sky-600', 'text-white', 'shadow-sm');
@@ -249,13 +300,35 @@ function processBarcodeScan(barcodeCode) {
   const targetCode = String(barcodeCode).trim().toLowerCase();
   const student = studentsData.find(s => String(s.id).trim().toLowerCase() === targetCode);
 
+  // 1. Validasi: Apakah Siswa Terdaftar?
   if (!student) {
     showToast(`❌ Kode "${barcodeCode}" tidak ditemukan!`, '⚠️');
-    setTimeout(() => { isProcessingScan = false; }, 1500);
+    setTimeout(() => { isProcessingScan = false; }, 1800);
     return;
   }
 
+  // 2. Validasi: APAKAH KELAS SISWA SESUAI DENGAN KELAS YANG DIPILIH?
+  if (!selectedScanClass || !isClassMatch(student.kelas, selectedScanClass)) {
+    showToast(`⛔ Gagal! ${student.nama} terdaftar di ${student.kelas}, bukan ${selectedScanClass || 'kelas yang dipilih'}!`, '⛔');
+    setTimeout(() => { isProcessingScan = false; }, 2500);
+    return;
+  }
+
+  // 3. Validasi: CEGAH ABSEN 2 KALI (PER HARI)
   const todayStr = getTodayDateStr();
+  const existingLog = attendanceLogs.find(l => 
+    cleanDateStr(l.dateStr, l.timestamp) === todayStr && 
+    String(l.studentId).trim().toLowerCase() === targetCode &&
+    l.status !== 'Tidak Hadir'
+  );
+
+  if (existingLog) {
+    showToast(`⚠️ Absen ditolak! ${student.nama} sudah melakukan absensi hari ini (${existingLog.status})!`, '⚠️');
+    setTimeout(() => { isProcessingScan = false; }, 2500);
+    return;
+  }
+
+  // 4. Catat Absensi Pertama
   const now = new Date();
   const timeStrWita = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Makassar', hour12: false }).replace(/\./g, ':');
   const timeParts = timeStrWita.split(':');
@@ -266,11 +339,6 @@ function processBarcodeScan(barcodeCode) {
 
   const currentFullTime24 = `${hours}:${minutes}:${seconds}`;
   const finalStatus = document.getElementById('scanStatusMode').value || 'Hadir';
-
-  attendanceLogs = attendanceLogs.filter(l => !(
-    cleanDateStr(l.dateStr, l.timestamp) === todayStr && 
-    String(l.studentId).trim().toLowerCase() === targetCode
-  ));
 
   const newLog = {
     id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -317,7 +385,7 @@ async function toggleCameraScanner() {
       }
     }
     isCameraActive = false;
-    if (previewContainer) previewContainer.classList.add('hidden'); // Sembunyikan kotak kamera
+    if (previewContainer) previewContainer.classList.add('hidden');
     if (btn) btn.innerHTML = '<i class="fa-solid fa-camera"></i> Aktifkan Kamera HP / Laptop';
     showToast('Kamera dimatikan.', '📷');
   } else {
@@ -344,7 +412,7 @@ async function toggleCameraScanner() {
 
     try {
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Membuka Kamera...';
-      if (previewContainer) previewContainer.classList.remove('hidden'); // Tampilkan kotak kamera saat aktif
+      if (previewContainer) previewContainer.classList.remove('hidden');
 
       await html5QrCode.start(
         { facingMode: "environment" },
@@ -616,7 +684,7 @@ function renderUsersTable() {
 }
 
 // ==========================================
-// RENDER LAPORAN ABSENSI (PASTI 1 BARIS PER SISWA PER HARI)
+// RENDER LAPORAN ABSENSI
 // ==========================================
 function renderDashboard() {
   studentsData = getUniqueStudents(studentsData);
@@ -692,7 +760,6 @@ function renderDashboard() {
     displayLogs = displayLogs.filter(l => isClassMatch(l.kelas, selectedClass));
   }
 
-  // SAFETY DEDUPLICATION PADA TAMPILAN
   const finalDisplayLogs = [];
   const seenKeys = new Set();
   displayLogs.forEach(l => {
@@ -820,6 +887,7 @@ function clearAllData() {
 function updateAllViews() {
   populateClassSelects();
   populateDateSelects();
+  renderClassSelectionGrid();
   renderStudentTable();
   renderDashboard();
 }
@@ -828,18 +896,20 @@ function populateClassSelects() {
   const teacherFilter = document.getElementById('teacherClassFilter');
   const dashClassFilter = document.getElementById('dashboardClassFilter');
 
-  teacherFilter.innerHTML = '<option value="ALL">Semua Kelas</option>';
-  dashClassFilter.innerHTML = '<option value="ALL">🌟 Semua Kelas</option>';
+  if (teacherFilter) teacherFilter.innerHTML = '<option value="ALL">Semua Kelas</option>';
+  if (dashClassFilter) dashClassFilter.innerHTML = '<option value="ALL">🌟 Semua Kelas</option>';
 
-  const classes = [...new Set(studentsData.map(s => s.kelas))].sort();
+  const classes = [...new Set([...DEFAULT_CLASSES, ...studentsData.map(s => s.kelas)])].sort();
   classes.forEach(cls => {
-    teacherFilter.appendChild(new Option(cls, cls));
-    dashClassFilter.appendChild(new Option(`📚 ${cls}`, cls));
+    if (teacherFilter) teacherFilter.appendChild(new Option(cls, cls));
+    if (dashClassFilter) dashClassFilter.appendChild(new Option(`📚 ${cls}`, cls));
   });
 }
 
 function populateDateSelects() {
   const dashDateFilter = document.getElementById('dashboardDateFilter');
+  if (!dashDateFilter) return;
+  
   dashDateFilter.innerHTML = '<option value="ALL">📅 Semua Tanggal</option>';
   
   const todayStr = getTodayDateStr();
@@ -850,7 +920,6 @@ function populateDateSelects() {
   dates.forEach(dStr => dashDateFilter.appendChild(new Option(`🗓️ ${dStr}`, dStr)));
 }
 
-// FUNGSI UPLOAD EXCEL (DIPERBAIKI: PENGGABUNGAN DATA SISWA LAMA & BARU)
 function handleExcelUpload(e) {
   if (!currentUser || currentUser.role !== 'admin') {
     showToast('⛔ Hanya Administrator yang dapat mengunggah berkas.');
@@ -868,7 +937,7 @@ function handleExcelUpload(e) {
       const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
 
       const newStudents = [];
-      json.forEach((row, i) => {
+      json.forEach((row) => {
         const keys = Object.keys(row);
         const id = row[keys.find(k => k.toLowerCase().includes('id') || k.toLowerCase().includes('nis')) || keys[0]];
         const nama = row[keys.find(k => k.toLowerCase().includes('nama')) || keys[1]];
@@ -880,7 +949,6 @@ function handleExcelUpload(e) {
       });
 
       if (newStudents.length > 0) {
-        // GABUNGKAN DATA SISWA LAMA DAN SISWA BARU DARI EXCEL
         studentsData = getUniqueStudents([...studentsData, ...newStudents]);
         saveDataToLocalStorage();
         updateAllViews();
