@@ -11,7 +11,7 @@
   <!-- Font Awesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
-  <!-- Google Fonts (Plus Jakarta Sans & Fredoka) -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -109,15 +109,45 @@
 
     <!-- 1. TAB PEMINDAI (SCANNER) -->
     <section id="tabScan" class="tab-content max-w-2xl mx-auto">
-      <div class="glass-card rounded-[32px] p-8 sm:p-10 border-2 border-sky-300 shadow-xl shadow-sky-100/60 text-center relative">
-        
-        <!-- Icon Top -->
+      
+      <!-- LANGKAH 1: PILIH KELAS TERLEBIH DAHULU -->
+      <div id="scanClassSelectionStep" class="glass-card rounded-[32px] p-8 sm:p-10 border-2 border-sky-300 shadow-xl shadow-sky-100/60 text-center">
         <div class="w-14 h-14 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
-          <i class="fa-solid fa-qrcode"></i>
+          <i class="fa-solid fa-chalkboard-user"></i>
         </div>
 
-        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight font-heading mb-1">Scan Kartu QR Code Siswa</h2>
-        <p class="text-sm text-slate-500 font-medium mb-6">Arahkan QR Code ke kamera atau gunakan pemindai USB.</p>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight font-heading mb-1">Pilih Kelas Terlebih Dahulu</h2>
+        <p class="text-sm text-slate-500 font-medium mb-8">Pilih kelas yang akan melakukan absensi hari ini:</p>
+
+        <!-- GRID TOMBOL PILIHAN KELAS -->
+        <div id="classSelectionGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-lg mx-auto">
+          <!-- Tombol kelas dirender via script.js -->
+        </div>
+      </div>
+
+      <!-- LANGKAH 2: PEMINDAI AKTIF SESUAI KELAS TERPILIH (TERSEMBUNYI DI AWAL) -->
+      <div id="scanActiveStep" class="hidden glass-card rounded-[32px] p-8 sm:p-10 border-2 border-sky-300 shadow-xl shadow-sky-100/60 text-center relative">
+        
+        <!-- Header Info Kelas Terpilih & Tombol Ganti Kelas -->
+        <div class="flex items-center justify-between bg-sky-50 p-3.5 rounded-2xl border border-sky-200 mb-6 max-w-md mx-auto">
+          <div class="text-left">
+            <span class="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider block">Mode Absensi Aktif:</span>
+            <span id="activeClassNameBadge" class="text-base font-black text-sky-900 font-heading">Kelas V</span>
+          </div>
+          <button onclick="backToClassSelection()" class="bg-white hover:bg-slate-100 text-slate-700 font-extrabold text-xs px-3.5 py-2 rounded-xl border border-slate-300 transition shadow-sm flex items-center gap-1.5">
+            <i class="fa-solid fa-arrow-left"></i> Ganti Kelas
+          </button>
+        </div>
+
+        <!-- Status Masuk Dropdown (Hadir, Sakit, Izin) -->
+        <div class="flex items-center justify-center gap-3 mb-6">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">STATUS MASUK:</span>
+          <select id="scanStatusMode" class="bg-sky-50 border border-sky-200 text-sky-800 text-xs font-extrabold px-3.5 py-1.5 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none cursor-pointer">
+            <option value="Hadir">✅ Hadir</option>
+            <option value="Sakit">🏥 Sakit</option>
+            <option value="Izin">📩 Izin</option>
+          </select>
+        </div>
 
         <!-- Form Input USB Scanner -->
         <div class="max-w-md mx-auto mb-2">
@@ -128,18 +158,7 @@
         </div>
         <p class="text-[11px] font-semibold text-slate-400 mb-6">Tekan Enter atau scan dengan alat fisik untuk otomatis merekam absensi.</p>
 
-        <!-- Status Masuk Dropdown -->
-        <div class="flex items-center justify-center gap-3 mb-6">
-          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">STATUS MASUK:</span>
-          <select id="scanStatusMode" class="bg-sky-50 border border-sky-200 text-sky-800 text-xs font-extrabold px-3.5 py-1.5 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none cursor-pointer">
-            <option value="Hadir">✅ Hadir</option>
-            <option value="Sakit">🏥 Sakit</option>
-            <option value="Izin">📩 Izin</option>
-            <option value="Tidak Hadir">❌ Tidak Hadir</option>
-          </select>
-        </div>
-
-        <!-- Area Kamera (Dihide secara default) -->
+        <!-- Area Kamera -->
         <div class="border-2 border-dashed border-sky-300 rounded-2xl p-3 max-w-md mx-auto mb-4 bg-sky-50/40">
           <div id="cameraPreviewContainer" class="hidden mb-3 bg-slate-900 rounded-xl overflow-hidden border-2 border-white shadow-inner aspect-square max-w-xs mx-auto">
             <div id="reader" class="w-full h-full object-cover"></div>
@@ -165,6 +184,7 @@
         </div>
 
       </div>
+
     </section>
 
     <!-- 2. TAB LAPORAN & DASHBOARD -->
