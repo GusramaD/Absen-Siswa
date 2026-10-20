@@ -305,6 +305,7 @@ function processBarcodeScan(barcodeCode) {
 // Kontrol Kamera Direct API
 async function toggleCameraScanner() {
   const btn = document.getElementById('btnToggleCamera');
+  const previewContainer = document.getElementById('cameraPreviewContainer');
 
   if (isCameraActive) {
     if (html5QrCode) {
@@ -316,6 +317,7 @@ async function toggleCameraScanner() {
       }
     }
     isCameraActive = false;
+    if (previewContainer) previewContainer.classList.add('hidden'); // Sembunyikan kotak kamera
     if (btn) btn.innerHTML = '<i class="fa-solid fa-camera"></i> Aktifkan Kamera HP / Laptop';
     showToast('Kamera dimatikan.', '📷');
   } else {
@@ -342,6 +344,7 @@ async function toggleCameraScanner() {
 
     try {
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Membuka Kamera...';
+      if (previewContainer) previewContainer.classList.remove('hidden'); // Tampilkan kotak kamera saat aktif
 
       await html5QrCode.start(
         { facingMode: "environment" },
@@ -358,6 +361,7 @@ async function toggleCameraScanner() {
     } catch (err) {
       console.error("Gagal membuka kamera:", err);
       isCameraActive = false;
+      if (previewContainer) previewContainer.classList.add('hidden');
       if (btn) btn.innerHTML = '<i class="fa-solid fa-camera"></i> Aktifkan Kamera HP / Laptop';
       showToast('❌ Akses kamera ditolak.', '⚠️');
     }
